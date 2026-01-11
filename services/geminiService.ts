@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { Ingredient, Overheads, InstructionStep, PantryItem } from "../types";
+import { Ingredient, Overheads, InstructionStep, PantryItem, NutritionData, RecipeCategory } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -19,8 +19,27 @@ interface AIJoaquinRecipe {
   cookingTimeMinutes: number;
   instructions: { step: string; time: number }[];
   difficulty: 'easy' | 'medium' | 'hard';
+  category: RecipeCategory;
   description: string;
+  nutrition: NutritionData;
 }
+
+const NUTRITION_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    totalCalories: { type: Type.NUMBER, description: "Total Kcal for the whole recipe" },
+    caloriesPerServing: { type: Type.NUMBER, description: "Kcal per serving based on standard yield" },
+    protein: { type: Type.NUMBER, description: "Total Protein in grams" },
+    carbs: { type: Type.NUMBER, description: "Total Carbs in grams" },
+    fats: { type: Type.NUMBER, description: "Total Fats in grams" },
+    tags: { 
+      type: Type.ARRAY, 
+      items: { type: Type.STRING },
+      description: "Tags like: 'Fitness', 'Bodybuilder', 'Low Carb', 'High Fat', 'Vegetarian', 'Sugar Bomb', 'Balanced'" 
+    }
+  },
+  required: ["totalCalories", "caloriesPerServing", "protein", "carbs", "fats", "tags"]
+};
 
 const RECIPE_SCHEMA: Schema = {
   type: Type.OBJECT,
@@ -55,9 +74,11 @@ const RECIPE_SCHEMA: Schema = {
           required: ["step", "time"]
       },
     },
-    difficulty: { type: Type.STRING, description: "Difficulty level: easy, medium, or hard" }
+    difficulty: { type: Type.STRING, description: "Difficulty level: easy, medium, or hard" },
+    category: { type: Type.STRING, description: "One of: main, dessert, snack, drink, other" },
+    nutrition: NUTRITION_SCHEMA
   },
-  required: ["recipeName", "description", "ingredients", "prepTimeMinutes", "cookingTimeMinutes", "instructions", "difficulty"],
+  required: ["recipeName", "description", "ingredients", "prepTimeMinutes", "cookingTimeMinutes", "instructions", "difficulty", "category", "nutrition"],
 };
 
 export const analyzeRecipeWithGemini = async (userPrompt: string): Promise<AIJoaquinRecipe | null> => {
@@ -75,6 +96,9 @@ export const analyzeRecipeWithGemini = async (userPrompt: string): Promise<AIJoa
       3. Estimate preparation and cooking times.
       4. Write step-by-step instructions in Portuguese.
          IMPORTANT: For each step, estimate the time in minutes it takes to complete (e.g., "Mix ingredients" = 2 mins, "Bake" = 40 mins).
+      5. Calculate approximate Nutrition facts (Calories, Protein, Carbs, Fats).
+      6. Determine the category (main, dessert, snack, drink, other).
+      7. Assign stereotype tags based on nutrition (e.g., "Fitness", "High Fat Risk", "Bodybuild Protein", "Sugar Heavy", "Balanced").
 
       Be realistic with quantities and prices.
     `;
@@ -95,6 +119,36 @@ export const analyzeRecipeWithGemini = async (userPrompt: string): Promise<AIJoa
   } catch (error) {
     console.error("Error analyzing recipe with Gemini:", error);
     return null;
+  }
+};
+
+export const calculateNutrition = async (recipeName: string, ingredients: {name: string, quantity: number, unit: string}[]): Promise<NutritionData | null> => {
+  try {
+    const ingList = ingredients.map(i => `${i.quantity}${i.unit} ${i.name}`).join(', ');
+    const prompt = `
+      Calculate the approximate TOTAL nutritional value for this recipe: "${recipeName}".
+      Ingredients: ${ingList}.
+      
+      Return JSON with totalCalories, caloriesPerServing (assume 1 serving if unknown, or calc total), protein (g), carbs (g), fats (g).
+      Also add 'tags': List of strings describing the recipe health profile (e.g., "Fitness", "Bodybuild", "High Calorie", "Standard", "Low Carb").
+    `;
+
+    const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: NUTRITION_SCHEMA
+        }
+    });
+
+    if (response.text) {
+        return JSON.parse(response.text) as NutritionData;
+    }
+    return null;
+  } catch (e) {
+      console.error(e);
+      return null;
   }
 };
 
@@ -158,13 +212,15 @@ export const suggestRecipesFromPantry = async (pantryItems: PantryItem[]): Promi
       TASK: Create a DAILY MEAL PLAN (Menu do Dia) using these items (you can assume I have basics like salt, oil, water, flour, sugar).
       
       You must return exactly 3 recipes corresponding to:
-      1. Breakfast (Café da Manhã)
-      2. Lunch (Almoço)
-      3. Dinner (Jantar)
+      1. Breakfast (Café da Manhã) - Category: snack/other
+      2. Lunch (Almoço) - Category: main
+      3. Dinner (Jantar) - Category: main
       
       CRITICAL INSTRUCTIONS:
       - In the 'description' field of the recipe, explicitly state: "Sugestão para: [Café/Almoço/Jantar]".
       - For EVERY ingredient (even the ones from my pantry), you MUST estimate the 'packagePrice' and 'packageQuantity' based on typical Brazilian market prices (BRL). This is required so I can calculate the cost of the recipe.
+      - Estimate Nutrition for each recipe AND assign health tags (Fitness, High Fat, etc).
+      - Assign correct 'category' (main, dessert, snack, drink, other).
       
       Example Ingredient Output:
       { name: "Milk", packagePrice: 5.00, packageQuantity: 1, packageUnit: "l", usedQuantity: 200, usedUnit: "ml" }

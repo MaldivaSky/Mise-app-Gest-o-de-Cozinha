@@ -27,10 +27,20 @@ export interface Overheads {
 }
 
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'custom';
+export type RecipeCategory = 'main' | 'dessert' | 'snack' | 'drink' | 'other';
 
 export interface InstructionStep {
   text: string;
   timeInMinutes?: number; // Tempo estimado para este passo
+}
+
+export interface NutritionData {
+  totalCalories: number; // Kcal total da receita
+  caloriesPerServing: number; // Kcal por porção
+  protein: number; // gramas
+  carbs: number; // gramas
+  fats: number; // gramas
+  tags?: string[]; // e.g., 'Fitness', 'Low Carb', 'High Fat', 'Bodybuild'
 }
 
 export interface Recipe {
@@ -43,7 +53,10 @@ export interface Recipe {
   overheads: Overheads;
   instructions: InstructionStep[]; // Atualizado para suportar tempo
   difficulty?: Difficulty; // Novo campo para gamificação
+  category?: RecipeCategory; // Nova categorização
   description?: string; // Description for the book
+  nutrition?: NutritionData; // Novo campo nutricional
+  image?: string; // Base64 image string
 }
 
 export interface CostBreakdown {

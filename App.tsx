@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Trash2, ChefHat, Flame, Clock, Droplets, Banknote, Sparkles, Save, RotateCcw, DollarSign, PlayCircle, BookOpen, Wand2, Calculator, Trophy, Star, LogOut, User, Share2, AlertTriangle, ArrowRight, Scale, ShoppingBag, Utensils, AlertCircle, CheckCircle2, Book, PieChart, Hash, ShoppingBasket, SaveAll } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Plus, Trash2, ChefHat, Flame, Clock, Droplets, Banknote, Sparkles, Save, RotateCcw, DollarSign, PlayCircle, BookOpen, Wand2, Calculator, Trophy, Star, LogOut, User, Share2, AlertTriangle, ArrowRight, Scale, ShoppingBag, Utensils, AlertCircle, CheckCircle2, Book, PieChart, Hash, ShoppingBasket, SaveAll, Activity, HeartPulse, Camera } from 'lucide-react';
 import { Ingredient, Recipe, Overheads, CostBreakdown, UserProfile, CookingSession, InstructionStep, PantryItem } from './types';
-import { generateInstructionsOnly } from './services/geminiService';
+import { generateInstructionsOnly, calculateNutrition } from './services/geminiService';
 import { requestNotificationPermission, checkPantryNotifications, checkMealNotifications, AppNotification } from './services/notificationService';
 import { CostChart } from './components/CostChart';
 import { InfoTooltip } from './components/InfoTooltip';
@@ -14,6 +14,7 @@ import { ShareModal } from './components/ShareModal';
 import { RecipeBookModal } from './components/RecipeBookModal';
 import { PantryModal } from './components/PantryModal';
 import { NotificationToast } from './components/NotificationToast';
+import { NutritionLabel } from './components/NutritionLabel';
 
 // --- Constants & Helpers ---
 
@@ -78,7 +79,8 @@ const initialRecipe: Recipe = {
   ],
   overheads: defaultOverheads,
   instructions: [],
-  difficulty: 'custom'
+  difficulty: 'custom',
+  category: 'other'
 };
 
 // --- Gamification Logic ---
@@ -93,6 +95,15 @@ const initialProfile: UserProfile = {
   history: []
 };
 
+// Helper to determine tag color
+const getTagColor = (tag: string) => {
+  const t = tag.toLowerCase();
+  if (t.includes('fitness') || t.includes('low carb') || t.includes('balanced')) return 'bg-teal-100 text-teal-800 border-teal-200';
+  if (t.includes('bodybuild') || t.includes('protein')) return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+  if (t.includes('fat') || t.includes('sugar') || t.includes('high')) return 'bg-red-100 text-red-800 border-red-200';
+  return 'bg-stone-100 text-stone-600 border-stone-200';
+};
+
 export default function App() {
   // Auth State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -100,6 +111,7 @@ export default function App() {
   // App State
   const [recipe, setRecipe] = useState<Recipe>(initialRecipe);
   const [isGeneratingInstructions, setIsGeneratingInstructions] = useState(false);
+  const [isCalculatingNutrition, setIsCalculatingNutrition] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [pantryItems, setPantryItems] = useState<PantryItem[]>([]);
   const [savedRecipes, setSavedRecipes] = useState<Recipe[]>([]);
@@ -242,8 +254,33 @@ export default function App() {
     setTimeout(() => setRewardData(null), 2000);
   };
 
+  // New function to save generated recipes
+  const handleSaveGeneratedRecipe = (generatedRecipe: Recipe) => {
+    const newRecipe: Recipe = {
+      ...generatedRecipe,
+      id: Date.now().toString() // Ensure a fresh unique ID
+    };
+    
+    setSavedRecipes(prev => [...prev, newRecipe]);
+    
+    // UI Feedback "Saved"
+    setRewardData({ xp: 0, levelUp: false }); 
+    setTimeout(() => setRewardData(null), 2000);
+  };
+
   const handleDeleteCustomRecipe = (id: string) => {
     setSavedRecipes(prev => prev.filter(r => r.id !== id));
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setRecipe(prev => ({ ...prev, image: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
 
@@ -377,7 +414,9 @@ export default function App() {
               ...(newRecipeData.overheads || {})
           },
           instructions: newRecipeData.instructions || [],
-          difficulty: 'custom'
+          difficulty: 'custom',
+          category: newRecipeData.category || 'other',
+          nutrition: newRecipeData.nutrition // Import nutrition if available
       }));
   };
 
@@ -411,6 +450,26 @@ export default function App() {
         setAiError("Erro ao gerar instruções. Tente novamente.");
      }
      setIsGeneratingInstructions(false);
+  };
+
+  const handleCalculateNutrition = async () => {
+     if (recipe.ingredients.length === 0) return;
+     
+     setIsCalculatingNutrition(true);
+     const ingredientsList = recipe.ingredients.map(i => ({
+         name: i.name,
+         quantity: i.usedQuantity,
+         unit: i.usedUnit
+     }));
+     
+     const nutrition = await calculateNutrition(recipe.name || 'Receita', ingredientsList);
+     
+     if (nutrition) {
+         setRecipe(prev => ({ ...prev, nutrition }));
+     } else {
+         // Optionally show error toast
+     }
+     setIsCalculatingNutrition(false);
   };
 
   const handleRecipeCompletion = () => {
@@ -604,6 +663,7 @@ export default function App() {
           savedRecipes={savedRecipes}
           onDeleteRecipe={handleDeleteCustomRecipe}
           generatedRecipes={generatedPantryRecipes}
+          onSaveRecipe={handleSaveGeneratedRecipe}
         />
       )}
 
@@ -728,18 +788,44 @@ export default function App() {
           {/* Left Column: Inputs */}
           <div className="lg:col-span-7 space-y-6">
             
-            {/* 1. Recipe Name & Smart Import */}
+            {/* 1. Recipe Name, Photo & Smart Import */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
               <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end justify-between">
-                  <div className="w-full">
-                    <label className="block text-sm font-medium text-stone-700 mb-2">Nome da Receita</label>
-                    <input 
-                    type="text" 
-                    value={recipe.name}
-                    onChange={(e) => setRecipe({...recipe, name: e.target.value})}
-                    placeholder="Ex: Pudim de Leite Condensado"
-                    className="w-full rounded-xl bg-stone-900 border-stone-800 text-yellow-400 placeholder-stone-600 shadow-sm focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 p-3 border outline-none transition-all font-bold"
-                    />
+                  <div className="w-full flex gap-4">
+                     {/* Image Upload Trigger */}
+                     <div className="shrink-0 relative group">
+                        <label htmlFor="recipe-image-upload" className="block w-20 h-20 rounded-xl bg-stone-100 border-2 border-dashed border-stone-300 flex items-center justify-center cursor-pointer hover:border-chef-500 hover:bg-chef-50 transition-all overflow-hidden relative">
+                           {recipe.image ? (
+                              <>
+                                <img src={recipe.image} alt="Recipe" className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Camera className="text-white" size={20} />
+                                </div>
+                              </>
+                           ) : (
+                              <Camera className="text-stone-400 group-hover:text-chef-500" size={24} />
+                           )}
+                        </label>
+                        <input 
+                           id="recipe-image-upload" 
+                           type="file" 
+                           accept="image/*"
+                           capture="environment" // Forces camera on mobile
+                           className="hidden"
+                           onChange={handleImageUpload}
+                        />
+                     </div>
+
+                     <div className="flex-1">
+                        <label className="block text-sm font-medium text-stone-700 mb-2">Nome da Receita</label>
+                        <input 
+                        type="text" 
+                        value={recipe.name}
+                        onChange={(e) => setRecipe({...recipe, name: e.target.value})}
+                        placeholder="Ex: Pudim de Leite Condensado"
+                        className="w-full rounded-xl bg-stone-900 border-stone-800 text-yellow-400 placeholder-stone-600 shadow-sm focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 p-3 border outline-none transition-all font-bold"
+                        />
+                     </div>
                   </div>
                   
                   <div className="flex gap-2 w-full sm:w-auto">
@@ -1159,6 +1245,62 @@ export default function App() {
                         </div>
                     </div>
                 </div>
+
+                {/* Health Profile Card (New Feature) */}
+                {recipe.nutrition && (
+                   <div className="bg-white border border-stone-200 rounded-3xl p-6 shadow-md relative overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500">
+                      <div className="flex items-center gap-2 mb-4">
+                         <div className="p-2 bg-pink-100 text-pink-600 rounded-full">
+                            <HeartPulse size={20} />
+                         </div>
+                         <h3 className="font-bold text-stone-800">Perfil Nutricional</h3>
+                      </div>
+                      
+                      <div className="flex justify-between items-center mb-4">
+                         <div>
+                            <span className="text-xs text-stone-400 uppercase tracking-wide">Total Receita</span>
+                            <div className="text-2xl font-black text-stone-800">{recipe.nutrition.totalCalories} <span className="text-sm font-normal text-stone-500">kcal</span></div>
+                         </div>
+                         <div className="text-right">
+                             <span className="text-xs text-stone-400 uppercase tracking-wide">Por Unidade</span>
+                             <div className="text-xl font-bold text-stone-800">
+                                {Math.round(recipe.nutrition.totalCalories / (recipe.yields || 1))} <span className="text-sm font-normal text-stone-500">kcal</span>
+                             </div>
+                         </div>
+                      </div>
+
+                      {recipe.nutrition.tags && recipe.nutrition.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                             {recipe.nutrition.tags.map((tag, idx) => (
+                                <span key={idx} className={`text-xs px-2 py-1 rounded-md font-bold border ${getTagColor(tag)}`}>
+                                   {tag}
+                                </span>
+                             ))}
+                          </div>
+                      )}
+                   </div>
+                )}
+                
+                {/* Nutrition Card Logic (Details) */}
+                {recipe.nutrition ? (
+                   <NutritionLabel nutrition={recipe.nutrition} yields={recipe.yields} />
+                ) : (
+                   <div className="bg-white border-2 border-dashed border-stone-200 rounded-xl p-6 text-center">
+                       <p className="text-stone-400 text-sm mb-3">Sem dados nutricionais</p>
+                       <button
+                         onClick={handleCalculateNutrition}
+                         disabled={isCalculatingNutrition || recipe.ingredients.length === 0}
+                         className="bg-stone-100 hover:bg-stone-200 text-stone-600 px-4 py-2 rounded-full text-sm font-bold flex items-center justify-center gap-2 mx-auto transition-colors disabled:opacity-50"
+                       >
+                           {isCalculatingNutrition ? (
+                             <div className="animate-spin h-4 w-4 border-2 border-stone-400 border-t-transparent rounded-full"/>
+                           ) : (
+                             <Activity size={16} />
+                           )}
+                           Calcular Calorias & Perfil
+                       </button>
+                   </div>
+                )}
 
                 {/* Tutorial / Cooking Mode CTA */}
                 <button

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { X, ChefHat, Star, Flame, Clock, Award, ArrowRight, Trash2, Book, Sparkles, User } from 'lucide-react';
-import { Recipe, Difficulty } from '../types';
+import { X, ChefHat, Star, Flame, Clock, Award, ArrowRight, Trash2, Book, Sparkles, User, Utensils, Coffee, Pizza, IceCream, Plus } from 'lucide-react';
+import { Recipe, Difficulty, RecipeCategory } from '../types';
 
 interface RecipeBookModalProps {
   onClose: () => void;
@@ -9,14 +9,16 @@ interface RecipeBookModalProps {
   savedRecipes: Recipe[];
   onDeleteRecipe: (id: string) => void;
   generatedRecipes?: Recipe[];
+  onSaveRecipe?: (recipe: Recipe) => void;
 }
 
-// Preset Recipes Data (Moved inside or kept as constant)
+// Preset Recipes Data
 const PRESET_RECIPES: (Recipe & { description: string })[] = [
   {
     id: 'preset_1',
     name: "Brigadeiro Gourmet",
     description: "O clássico brasileiro para vendas rápidas e alta margem.",
+    category: 'dessert',
     yields: 25,
     portionSize: 15,
     profitMargin: 100,
@@ -54,6 +56,7 @@ const PRESET_RECIPES: (Recipe & { description: string })[] = [
     id: 'preset_2',
     name: "Risoto de Funghi Secchi",
     description: "Prato sofisticado que exige técnica e atenção constante.",
+    category: 'main',
     yields: 4,
     portionSize: 350,
     profitMargin: 150,
@@ -94,6 +97,7 @@ const PRESET_RECIPES: (Recipe & { description: string })[] = [
     id: 'preset_3',
     name: "Boeuf Bourguignon",
     description: "O teste supremo de paciência e construção de sabores.",
+    category: 'main',
     yields: 6,
     portionSize: 400,
     profitMargin: 200,
@@ -158,20 +162,44 @@ const DifficultyBadge = ({ level }: { level: Difficulty }) => {
 };
 
 type Tab = 'presets' | 'custom' | 'generated';
+type CategoryFilter = 'all' | 'main' | 'dessert' | 'snack' | 'drink';
 
-export const RecipeBookModal: React.FC<RecipeBookModalProps> = ({ onClose, onSelectRecipe, savedRecipes, onDeleteRecipe, generatedRecipes = [] }) => {
+export const RecipeBookModal: React.FC<RecipeBookModalProps> = ({ onClose, onSelectRecipe, savedRecipes, onDeleteRecipe, generatedRecipes = [], onSaveRecipe }) => {
   const [activeTab, setActiveTab] = useState<Tab>(generatedRecipes.length > 0 ? 'generated' : 'presets');
+  const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
 
   const getActiveRecipes = () => {
+    let source: Recipe[] = [];
+    
     switch (activeTab) {
-      case 'presets': return PRESET_RECIPES;
-      case 'custom': return savedRecipes;
-      case 'generated': return generatedRecipes;
-      default: return [];
+      case 'presets': source = PRESET_RECIPES; break;
+      case 'custom': source = savedRecipes; break;
+      case 'generated': source = generatedRecipes; break;
+      default: source = [];
     }
+
+    if (activeCategory === 'all') return source;
+    
+    return source.filter(r => {
+        // Handle recipes without category by defaulting to 'other' in memory if needed, or loosely matching
+        if (!r.category) return false;
+        return r.category === activeCategory;
+    });
   };
 
   const activeRecipes = getActiveRecipes();
+
+  // Helper to counts for badges (not efficient for huge lists but fine here)
+  const getCount = (cat: CategoryFilter) => {
+      let source: Recipe[] = [];
+      switch (activeTab) {
+        case 'presets': source = PRESET_RECIPES; break;
+        case 'custom': source = savedRecipes; break;
+        case 'generated': source = generatedRecipes; break;
+      }
+      if (cat === 'all') return source.length;
+      return source.filter(r => r.category === cat).length;
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm animate-in fade-in duration-300">
@@ -197,26 +225,26 @@ export const RecipeBookModal: React.FC<RecipeBookModalProps> = ({ onClose, onSel
             </button>
           </div>
           
-          {/* Tabs */}
+          {/* Main Tabs */}
           <div className="relative z-10 flex gap-4 mt-6">
               <button 
-                onClick={() => setActiveTab('presets')}
+                onClick={() => { setActiveTab('presets'); setActiveCategory('all'); }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'presets' ? 'bg-white text-stone-900' : 'bg-white/10 text-stone-400 hover:bg-white/20'}`}
               >
                   <Book size={16} /> Clássicas
               </button>
               <button 
-                onClick={() => setActiveTab('custom')}
+                onClick={() => { setActiveTab('custom'); setActiveCategory('all'); }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'custom' ? 'bg-white text-stone-900' : 'bg-white/10 text-stone-400 hover:bg-white/20'}`}
               >
-                  <User size={16} /> Minhas Receitas ({savedRecipes.length})
+                  <User size={16} /> Minhas Receitas
               </button>
               {generatedRecipes.length > 0 && (
                  <button 
-                    onClick={() => setActiveTab('generated')}
+                    onClick={() => { setActiveTab('generated'); setActiveCategory('all'); }}
                     className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'generated' ? 'bg-gradient-to-r from-chef-500 to-chef-600 text-white shadow-lg' : 'bg-white/10 text-stone-400 hover:bg-white/20'}`}
                 >
-                    <Sparkles size={16} /> Sugestões IA ({generatedRecipes.length})
+                    <Sparkles size={16} /> Sugestões IA
                 </button>
               )}
           </div>
@@ -227,13 +255,41 @@ export const RecipeBookModal: React.FC<RecipeBookModalProps> = ({ onClose, onSel
           </div>
         </div>
 
+        {/* Category Filter Bar */}
+        <div className="bg-stone-50 border-b border-stone-200 px-6 py-3 flex gap-2 overflow-x-auto shrink-0 scrollbar-hide">
+            {[
+                { id: 'all', label: 'Todas', icon: null },
+                { id: 'main', label: 'Prato Principal', icon: <Utensils size={14} /> },
+                { id: 'dessert', label: 'Sobremesas', icon: <IceCream size={14} /> },
+                { id: 'snack', label: 'Lanches', icon: <Pizza size={14} /> },
+                { id: 'drink', label: 'Bebidas', icon: <Coffee size={14} /> },
+            ].map((cat) => (
+                <button
+                    key={cat.id}
+                    onClick={() => setActiveCategory(cat.id as CategoryFilter)}
+                    className={`
+                        flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all whitespace-nowrap
+                        ${activeCategory === cat.id 
+                            ? 'bg-stone-800 text-white shadow-md' 
+                            : 'bg-white text-stone-500 border border-stone-200 hover:bg-stone-100'}
+                    `}
+                >
+                    {cat.icon}
+                    {cat.label}
+                    <span className={`ml-1 text-[10px] py-0.5 px-1.5 rounded-full ${activeCategory === cat.id ? 'bg-white/20 text-white' : 'bg-stone-100 text-stone-400'}`}>
+                        {getCount(cat.id as CategoryFilter)}
+                    </span>
+                </button>
+            ))}
+        </div>
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 bg-stone-50">
           
           {activeRecipes.length === 0 ? (
              <div className="flex flex-col items-center justify-center h-64 text-stone-400">
                 <Book size={48} className="mb-4 opacity-20" />
-                <p>Nenhuma receita encontrada nesta seção.</p>
+                <p>Nenhuma receita encontrada nesta categoria.</p>
                 {activeTab === 'custom' && <p className="text-xs mt-2">Salve receitas na tela principal para vê-las aqui.</p>}
              </div>
           ) : (
@@ -252,6 +308,18 @@ export const RecipeBookModal: React.FC<RecipeBookModalProps> = ({ onClose, onSel
                             <Trash2 size={16} />
                         </button>
                     )}
+                    
+                    {/* Image Preview in Card */}
+                    {recipe.image ? (
+                        <div className="h-40 w-full overflow-hidden relative">
+                             <img src={recipe.image} alt={recipe.name} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                             <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
+                        </div>
+                    ) : (
+                        <div className="h-24 bg-stone-100 w-full flex items-center justify-center border-b border-stone-100">
+                            <ChefHat className="text-stone-300" size={32} />
+                        </div>
+                    )}
 
                     <div className="p-5 flex-1">
                     <div className="flex justify-between items-start mb-3">
@@ -261,12 +329,23 @@ export const RecipeBookModal: React.FC<RecipeBookModalProps> = ({ onClose, onSel
                         </span>
                     </div>
                     
-                    <h3 className="text-xl font-bold text-stone-800 mb-2 group-hover:text-chef-600 transition-colors">
+                    <h3 className="text-xl font-bold text-stone-800 mb-2 group-hover:text-chef-600 transition-colors line-clamp-1">
                         {recipe.name}
                     </h3>
-                    <p className="text-sm text-stone-500 line-clamp-3 mb-4">
+                    <p className="text-sm text-stone-500 line-clamp-2 mb-4">
                         {recipe.description || "Receita personalizada."}
                     </p>
+
+                    {/* Nutrition Tags Badge Preview */}
+                    {recipe.nutrition?.tags && recipe.nutrition.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-4">
+                            {recipe.nutrition.tags.slice(0, 2).map((tag, i) => (
+                                <span key={i} className="text-[10px] bg-stone-100 text-stone-500 px-2 py-1 rounded-md font-semibold border border-stone-200">
+                                    {tag}
+                                </span>
+                            ))}
+                        </div>
+                    )}
 
                     <div className="flex items-center gap-4 text-xs text-stone-400 border-t border-stone-100 pt-3">
                         <div className="flex items-center gap-1">
@@ -280,14 +359,23 @@ export const RecipeBookModal: React.FC<RecipeBookModalProps> = ({ onClose, onSel
                     </div>
                     </div>
 
-                    <div className="p-4 bg-stone-50 border-t border-stone-100">
-                    <button
-                        onClick={() => onSelectRecipe(recipe)}
-                        className="w-full bg-stone-900 hover:bg-chef-600 text-white py-2.5 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-all group-hover:shadow-lg"
-                    >
-                        Cozinhar Agora
-                        <ArrowRight size={16} />
-                    </button>
+                    <div className="p-4 bg-stone-50 border-t border-stone-100 flex gap-2">
+                        {activeTab === 'generated' && onSaveRecipe && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onSaveRecipe(recipe); }}
+                                className="flex-1 bg-white hover:bg-stone-100 text-chef-500 border border-stone-200 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm"
+                                title="Salvar em Minhas Receitas"
+                            >
+                                <Plus size={16} /> Salvar
+                            </button>
+                        )}
+                        <button
+                            onClick={() => onSelectRecipe(recipe)}
+                            className="flex-[2] bg-stone-900 hover:bg-chef-600 text-white py-2.5 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-all group-hover:shadow-lg"
+                        >
+                            Cozinhar Agora
+                            <ArrowRight size={16} />
+                        </button>
                     </div>
                 </div>
                 ))}
