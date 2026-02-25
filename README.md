@@ -61,4 +61,4 @@ Este projeto está pronto para ser hospedado na Vercel. Lembre-se de adicionar a
 [!TIP]
 Dica de Chef: Ao usar o "Gerador de Receitas", tente ser específico. Em vez de "Bolo", use "Bolo de chocolate amargo para 12 pessoas, focado em baixo custo". A IA irá ajustar os ingredientes para sua necessidade.
 
-❤️ Desenvolvido por Mald1vas.T4ch para transformar a gestão gastronômica.
+❤️ Desenvolvido por Mald1vas.T4ch -2026- Todos os direitos para transformar a gestão gastronômica.
