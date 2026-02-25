@@ -697,9 +697,9 @@ export default function App() {
       <header className="bg-white border-b border-stone-200 sticky top-0 z-30 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="bg-chef-500 p-2 rounded-lg text-white">
-              <ChefHat size={24} />
-            </div>
+
+            <img src="./assets/logo.png" alt="Logo Mise" className="w-24 h-24 object-contain"/>
+
             <h1 className="text-2xl font-bold text-stone-900 tracking-tight hidden sm:block">Mise<span className="text-chef-600">.</span></h1>
             {userProfile.name && <span className="text-stone-400 text-sm ml-2 hidden md:block">| Olá, Chef {userProfile.name}</span>}
           </div>
