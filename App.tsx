@@ -15,6 +15,7 @@ import { RecipeBookModal } from './components/RecipeBookModal';
 import { PantryModal } from './components/PantryModal';
 import { NotificationToast } from './components/NotificationToast';
 import { NutritionLabel } from './components/NutritionLabel';
+import logo from './assets/logo.png'
 
 // --- Constants & Helpers ---
 
@@ -698,7 +699,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
 
-            <img src="./assets/logo.png" alt="Logo Mise" className="w-24 h-24 object-contain"/>
+            <img src={logo} alt="Logo Mise" className="w-14 h-14 object-contain"/>
 
             <h1 className="text-2xl font-bold text-stone-900 tracking-tight hidden sm:block">Mise<span className="text-chef-600">.</span></h1>
             {userProfile.name && <span className="text-stone-400 text-sm ml-2 hidden md:block">| Olá, Chef {userProfile.name}</span>}
